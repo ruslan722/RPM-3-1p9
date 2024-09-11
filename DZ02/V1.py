@@ -38,7 +38,6 @@ class Library:
     # Метод для добавления книги в библиотеку
     def add_book(self, book):
         self.books.append(book)     # Добавление книги в список
-
     # Метод для показа списка книг
     def show_books(self):
         if not self.books:
