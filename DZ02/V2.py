@@ -27,6 +27,7 @@ class Library:
             if book.dostup:
                 book.dostup = False
                 book.save()
+                #сохранили
                 print(f"Вы взяли книгу: {book.title}")
             else:
                 print(f"Книга '{book.title}' уже на руках.")
