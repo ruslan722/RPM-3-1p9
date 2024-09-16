@@ -1,0 +1,2 @@
+TOKEN = "7232014639:AAEgHvZWW71rttBKSdzcuJmUjgS_HclkD_8"
+DATABASE_PATH = "students.db"
