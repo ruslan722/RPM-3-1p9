@@ -1,6 +1,5 @@
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.types import KeyboardButton
-
 def main_menu_keyboard():
     builder = ReplyKeyboardBuilder()
     builder.button(text="Добавить студента")
