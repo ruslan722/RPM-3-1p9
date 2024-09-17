@@ -50,7 +50,7 @@ async def handle_add_student_option(message: Message, state: FSMContext):
     else:
         await message.answer("Пожалуйста, выберите корректный вариант.")
 
-# Обработка добавления студента по ID с именем по умолчанию и ссылкой на профиль
+# Обработка добавления студента по ID с последующим выбором: вводить ли данные или нет
 @router.message(StudentForm.telegram_id)
 async def process_telegram_id(message: Message, state: FSMContext):
     if message.text == "Назад":
@@ -70,21 +70,51 @@ async def process_telegram_id(message: Message, state: FSMContext):
             await state.clear()
             return
 
-        # Создаем ссылку на профиль студента
-        telegram_profile_link = f"tg://user?id={telegram_id}"
+        # Сохраняем ID студента в состоянии
+        await state.update_data(telegram_id=telegram_id)
+
+        # Предлагаем ввести дополнительные данные или оставить только ID
+        options_keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="Да, ввести данные")],
+                [KeyboardButton(text="Нет, сохранить только ID")],
+                [KeyboardButton(text="Назад")]
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await message.answer("Вы хотите ввести дополнительные данные о студенте?", reply_markup=options_keyboard)
+        await state.set_state(StudentForm.choose_data_option)
+
+    except ValueError:
+        await message.answer("Введите корректный Telegram ID или пересылайте сообщение от студента.")
+
+# Обработка выбора: ввести данные или сохранить только ID
+@router.message(StudentForm.choose_data_option)
+async def choose_data_option(message: Message, state: FSMContext):
+    if message.text == "Назад":
+        await back_to_menu(message, state)
+        return
+
+    if message.text == "Да, ввести данные":
+        await add_student_start(message, state)  # Переходим к запросу данных
+    elif message.text == "Нет, сохранить только ID":
+        data = await state.get_data()
+        telegram_id = data['telegram_id']
 
         # Добавляем студента с только ID, именем по умолчанию и возрастом по умолчанию (например, 0)
         Student.create(telegram_id=telegram_id, name="Не указано", age=0)
 
+        # Отправляем кликабельную ссылку на профиль
+        telegram_profile_link = f"<a href='tg://user?id={telegram_id}'>Профиль студента</a>"
         await message.answer(
             f"Студент с ID {telegram_id} добавлен. Имя не указано. Возраст: 0.\n"
-            f"Профиль: [Ссылка на профиль студента]({telegram_profile_link})",
-            parse_mode="Markdown"  # Используем Markdown для форматирования ссылки
+            f"{telegram_profile_link}",
+            parse_mode="HTML"
         )
         await state.clear()
-
-    except ValueError:
-        await message.answer("Введите корректный Telegram ID или пересылайте сообщение от студента.")
+    else:
+        await message.answer("Пожалуйста, выберите корректный вариант.")
 
 # Начало добавления студента с запросом данных
 async def add_student_start(message: Message, state: FSMContext):
@@ -149,7 +179,7 @@ async def set_student_gender(message: Message, state: FSMContext):
         return
 
     await state.update_data(gender=gender)
-    await message.answer("Введите группу студента:")
+    await message.answer("Введите группу студента (например: 3-1П9):")
     await state.set_state(StudentForm.group)
 
 # Запрос группы
@@ -161,7 +191,7 @@ async def set_student_group(message: Message, state: FSMContext):
 
     group = message.text
 
-    # Проверка формата группы 
+    # Проверка формата группы (например, 3-1П9)
     if not group[0].isdigit() or not '-' in group or len(group.split('-')[1]) < 2:
         await message.answer("Пожалуйста, введите корректный формат группы (например: 3-1П9).")
         return
@@ -171,7 +201,7 @@ async def set_student_group(message: Message, state: FSMContext):
     name = data['name']
     age = data['age']
     gender = data['gender']
-    telegram_id = message.from_user.id  # Сохраняем Telegram ID пользователя
+    telegram_id = data['telegram_id']  # Берем Telegram ID из состояния
 
     # Проверяем, существует ли студент с таким Telegram ID
     existing_student = Student.get_or_none(Student.telegram_id == telegram_id)
@@ -193,8 +223,12 @@ async def show_students(message: Message):
     if students:
         info = ""
         for student in students:
-            info += f"Имя: {student.name}, Возраст: {student.age}, Пол: {student.gender}, Группа: {student.group}, Средняя оценка: {student.average_grade}, Telegram ID: {student.telegram_id}\n"
-        await message.answer(info)
+            telegram_profile_link = f"<a href='tg://user?id={student.telegram_id}'>Профиль студента</a>"
+            info += (f"Имя: {student.name}, Возраст: {student.age}, Пол: {student.gender}, "
+                     f"Группа: {student.group}, Средняя оценка: {student.average_grade}, "
+                     f"Telegram ID: {student.telegram_id}\n"
+                     f"{telegram_profile_link}\n")
+        await message.answer(info, parse_mode="HTML")
     else:
         await message.answer("Студентов нет.")
 
@@ -203,7 +237,12 @@ async def show_students(message: Message):
 async def show_best_student(message: Message):
     best_student = Student.select().order_by(Student.average_grade.desc()).first()
     if best_student:
-        await message.answer(f"Лучший студент: {best_student.name}, Средняя оценка: {best_student.average_grade}")
+        telegram_profile_link = f"<a href='tg://user?id={best_student.telegram_id}'>Профиль студента</a>"
+        await message.answer(
+            f"Лучший студент: {best_student.name}, Средняя оценка: {best_student.average_grade}\n"
+            f"{telegram_profile_link}",
+            parse_mode="HTML"
+        )
     else:
         await message.answer("Студентов нет.")
 
@@ -214,12 +253,15 @@ async def sort_students_by_average_grade(message: Message):
     if students:
         info = ""
         for student in students:
-            info += f"Имя: {student.name}, Возраст: {student.age}, Пол: {student.gender}, Группа: {student.group}, Средняя оценка: {student.average_grade}\n"
-        await message.answer(f"Студенты, отсортированные по средней оценке:\n{info}")
+            telegram_profile_link = f"<a href='tg://user?id={student.telegram_id}'>Профиль студента</a>"
+            info += (f"Имя: {student.name}, Возраст: {student.age}, Пол: {student.gender}, "
+                     f"Группа: {student.group}, Средняя оценка: {student.average_grade}\n"
+                     f"{telegram_profile_link}\n")
+        await message.answer(f"Студенты, отсортированные по средней оценке:\n{info}", parse_mode="HTML")
     else:
         await message.answer("Студентов нет.")
 
-# Добавить оценку студенту
+# Добавить оценку студенту (используем реальный Telegram ID)
 @router.message(lambda message: message.text == "Добавить оценку студенту")
 async def choose_student_for_grade(message: Message, state: FSMContext):
     students = Student.select()
@@ -227,11 +269,12 @@ async def choose_student_for_grade(message: Message, state: FSMContext):
         await message.answer("Нет студентов для добавления оценки.")
         return
 
-    # Показываем список студентов для выбора
-    student_list = "\n".join([f"{student.id}. {student.name}" for student in students])
-    await message.answer(f"Выберите студента, отправив его ID:\n{student_list}")
+    # Показываем список студентов с их реальными Telegram ID
+    student_list = "\n".join([f"{student.name} (Telegram ID: {student.telegram_id})" for student in students])
+    await message.answer(f"Выберите студента, отправив его Telegram ID:\n{student_list}")
     await state.set_state(StudentForm.select_student)
 
+# Обработка выбора студента по его Telegram ID
 @router.message(StudentForm.select_student)
 async def enter_subject_for_grade(message: Message, state: FSMContext):
     if message.text == "Назад":
@@ -239,17 +282,19 @@ async def enter_subject_for_grade(message: Message, state: FSMContext):
         return
 
     try:
-        student_id = int(message.text)
-        student = Student.get_or_none(Student.id == student_id)
+        # Проверка, существует ли студент с таким Telegram ID
+        telegram_id = int(message.text)
+        student = Student.get_or_none(Student.telegram_id == telegram_id)
         if student:
-            await state.update_data(student_id=student_id)
+            await state.update_data(telegram_id=telegram_id)  # Сохраняем Telegram ID студента
             await message.answer(f"Введите предмет для студента {student.name}:")
             await state.set_state(StudentForm.enter_subject)
         else:
-            await message.answer("Неверный ID студента. Попробуйте еще раз.")
+            await message.answer("Неверный Telegram ID студента. Попробуйте еще раз.")
     except ValueError:
-        await message.answer("Введите корректный ID студента.")
+        await message.answer("Введите корректный Telegram ID студента.")
 
+# Запрос предмета и сохранение оценки
 @router.message(StudentForm.enter_subject)
 async def enter_grade_for_subject(message: Message, state: FSMContext):
     if message.text == "Назад":
@@ -258,14 +303,16 @@ async def enter_grade_for_subject(message: Message, state: FSMContext):
 
     subject = message.text
     await state.update_data(subject=subject)
-    await message.answer("Введите оценку:")
+    await message.answer("Введите оценку (например: 4.5):")
     await state.set_state(StudentForm.enter_grade)
 
+# Сохранение оценки
 @router.message(StudentForm.enter_grade)
 async def save_grade(message: Message, state: FSMContext):
     if message.text == "Назад":
         await back_to_menu(message, state)
         return
+
     try:
         grade_value = float(message.text)
     except ValueError:
@@ -274,15 +321,15 @@ async def save_grade(message: Message, state: FSMContext):
 
     # Получаем данные из состояния
     data = await state.get_data()
-    student_id = data['student_id']
+    telegram_id = data['telegram_id']  # Получаем Telegram ID студента
     subject = data['subject']
 
-    # Сохраняем оценку
-    student = Student.get(Student.id == student_id)
-    Grade.create(student=student, subject=subject, grade=grade_value)
+    # Сохраняем оценку в таблице Grade, используя Telegram ID
+    Grade.create(student_id=telegram_id, subject=subject, grade=grade_value)
 
-    # Пересчитываем среднюю оценку
-    grades = Grade.select().where(Grade.student == student)
+    # Пересчитываем среднюю оценку студента
+    student = Student.get(Student.telegram_id == telegram_id)
+    grades = Grade.select().where(Grade.student_id == telegram_id)
     average_grade = sum([g.grade for g in grades]) / len(grades)
     student.average_grade = average_grade
     student.save()
