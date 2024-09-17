@@ -22,7 +22,6 @@ async def back_to_menu(message: Message, state: FSMContext):
 # Добавить студента - выбор варианта
 @router.message(lambda message: message.text == "Добавить студента")
 async def choose_add_student_option(message: Message, state: FSMContext):
-    # Клавиатура с двумя вариантами и кнопкой "Назад"
     options_keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Добавить по ID")],
@@ -118,7 +117,6 @@ async def choose_data_option(message: Message, state: FSMContext):
 
 # Начало добавления студента с запросом данных
 async def add_student_start(message: Message, state: FSMContext):
-    # Клавиатура с кнопкой "Назад"
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Назад")]
@@ -151,7 +149,6 @@ async def set_student_age(message: Message, state: FSMContext):
         age = int(message.text)
         await state.update_data(age=age)
 
-        # Клавиатура для выбора пола с кнопкой "Назад"
         gender_keyboard = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="Мужской"), KeyboardButton(text="Женский")],
@@ -179,7 +176,7 @@ async def set_student_gender(message: Message, state: FSMContext):
         return
 
     await state.update_data(gender=gender)
-    await message.answer("Введите группу студента (например: 3-1П9):")
+    await message.answer("Введите группу студента:")
     await state.set_state(StudentForm.group)
 
 # Запрос группы
@@ -190,20 +187,16 @@ async def set_student_group(message: Message, state: FSMContext):
         return
 
     group = message.text
-
-    # Проверка формата группы (например, 3-1П9)
-    if not group[0].isdigit() or not '-' in group or len(group.split('-')[1]) < 2:
-        await message.answer("Пожалуйста, введите корректный формат группы (например: 3-1П9).")
+    if not group[0].isdigit() or '-' not in group or len(group.split('-')[1]) < 2:
+        await message.answer("Пожалуйста, введите корректный формат группы.")
         return
 
-    # Сохранение данных в базу данных
     data = await state.get_data()
     name = data['name']
     age = data['age']
     gender = data['gender']
-    telegram_id = data['telegram_id']  # Берем Telegram ID из состояния
+    telegram_id = data['telegram_id']
 
-    # Проверяем, существует ли студент с таким Telegram ID
     existing_student = Student.get_or_none(Student.telegram_id == telegram_id)
     if existing_student:
         await message.answer(f"Студент с ID Telegram {telegram_id} уже существует.")
@@ -260,6 +253,136 @@ async def sort_students_by_average_grade(message: Message):
         await message.answer(f"Студенты, отсортированные по средней оценке:\n{info}", parse_mode="HTML")
     else:
         await message.answer("Студентов нет.")
+# Просмотр оценок студента
+@router.message(lambda message: message.text == "Посмотреть оценки студента")
+async def choose_student_for_view_grades(message: Message, state: FSMContext):
+    students = Student.select()
+    if not students:
+        await message.answer("Нет студентов для просмотра оценок.")
+        return
+
+    student_list = "\n".join([f"{student.name} (Telegram ID: {student.telegram_id})" for student in students])
+    await message.answer(f"Выберите студента, отправив его Telegram ID:\n{student_list}")
+    await state.set_state(StudentForm.select_student_for_view)
+
+# Вывод таблицы оценок студента
+@router.message(StudentForm.select_student_for_view)
+async def show_student_grades(message: Message, state: FSMContext):
+    try:
+        telegram_id = int(message.text)
+        student = Student.get_or_none(Student.telegram_id == telegram_id)
+
+        if not student:
+            await message.answer("Неверный Telegram ID студента. Попробуйте еще раз.")
+            return
+
+        grades = Grade.select().where(Grade.student_id == telegram_id)
+        if grades:
+            grade_info = "Оценки студента:\n"
+            grade_info += "{:<10} {:<10}\n".format("Предмет", "Оценка")
+            grade_info += "-" * 20 + "\n"
+            for grade in grades:
+                grade_info += f"{grade.subject:<10} {grade.grade:<10}\n"
+
+            await message.answer(grade_info)
+            await state.update_data(telegram_id=telegram_id)
+
+            options_keyboard = ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="Изменить оценку")],
+                    [KeyboardButton(text="Добавить новую оценку")],
+                    [KeyboardButton(text="Назад")]
+                ],
+                resize_keyboard=True,
+                one_time_keyboard=True
+            )
+            await message.answer("Что вы хотите сделать?", reply_markup=options_keyboard)
+            await state.set_state(StudentForm.grade_action)
+        else:
+            await message.answer("У студента нет оценок.")
+    except ValueError:
+        await message.answer("Введите корректный Telegram ID студента.")
+
+# Действие с оценками (изменить или добавить)
+@router.message(StudentForm.grade_action)
+async def handle_grade_action(message: Message, state: FSMContext):
+    if message.text == "Назад":
+        await back_to_menu(message, state)
+        return
+
+    if message.text == "Изменить оценку":
+        await message.answer("Введите название предмета для изменения оценки:")
+        await state.set_state(StudentForm.change_grade_subject)
+    elif message.text == "Добавить новую оценку":
+        await message.answer("Введите название предмета для добавления новой оценки:")
+        await state.set_state(StudentForm.add_new_subject)
+    else:
+        await message.answer("Пожалуйста, выберите корректный вариант.")
+
+# Изменение оценки: запрос предмета
+@router.message(StudentForm.change_grade_subject)
+async def request_new_grade(message: Message, state: FSMContext):
+    subject = message.text
+    await state.update_data(subject=subject)
+    await message.answer("Введите новую оценку:")
+    await state.set_state(StudentForm.change_grade_value)
+
+# Изменение оценки: запрос новой оценки и сохранение
+@router.message(StudentForm.change_grade_value)
+async def save_new_grade(message: Message, state: FSMContext):
+    try:
+        new_grade = float(message.text)
+        data = await state.get_data()
+        telegram_id = data['telegram_id']
+        subject = data['subject']
+
+        grade = Grade.get_or_none(Grade.student_id == telegram_id, Grade.subject == subject)
+        if grade:
+            grade.grade = new_grade
+            grade.save()
+
+            student = Student.get(Student.telegram_id == telegram_id)
+            grades = Grade.select().where(Grade.student_id == telegram_id)
+            average_grade = sum([g.grade for g in grades]) / len(grades)
+            student.average_grade = average_grade
+            student.save()
+
+            await message.answer(f"Оценка по предмету {subject} изменена на {new_grade}. Средняя оценка обновлена.")
+            await state.clear()
+        else:
+            await message.answer(f"Оценка по предмету {subject} не найдена.")
+    except ValueError:
+        await message.answer("Введите корректное число.")
+
+# Добавление новой оценки: запрос предмета
+@router.message(StudentForm.add_new_subject)
+async def request_new_subject_grade(message: Message, state: FSMContext):
+    subject = message.text
+    await state.update_data(subject=subject)
+    await message.answer("Введите оценку:")
+    await state.set_state(StudentForm.add_new_grade)
+
+# Добавление новой оценки: сохранение
+@router.message(StudentForm.add_new_grade)
+async def save_new_subject_grade(message: Message, state: FSMContext):
+    try:
+        new_grade = float(message.text)
+        data = await state.get_data()
+        telegram_id = data['telegram_id']
+        subject = data['subject']
+
+        Grade.create(student_id=telegram_id, subject=subject, grade=new_grade)
+
+        student = Student.get(Student.telegram_id == telegram_id)
+        grades = Grade.select().where(Grade.student_id == telegram_id)
+        average_grade = sum([g.grade for g in grades]) / len(grades)
+        student.average_grade = average_grade
+        student.save()
+
+        await message.answer(f"Оценка по предмету {subject} добавлена: {new_grade}. Средняя оценка обновлена.")
+        await state.clear()
+    except ValueError:
+        await message.answer("Введите корректное число.")
 
 # Добавить оценку студенту (используем реальный Telegram ID)
 @router.message(lambda message: message.text == "Добавить оценку студенту")
@@ -269,7 +392,6 @@ async def choose_student_for_grade(message: Message, state: FSMContext):
         await message.answer("Нет студентов для добавления оценки.")
         return
 
-    # Показываем список студентов с их реальными Telegram ID
     student_list = "\n".join([f"{student.name} (Telegram ID: {student.telegram_id})" for student in students])
     await message.answer(f"Выберите студента, отправив его Telegram ID:\n{student_list}")
     await state.set_state(StudentForm.select_student)
@@ -282,11 +404,10 @@ async def enter_subject_for_grade(message: Message, state: FSMContext):
         return
 
     try:
-        # Проверка, существует ли студент с таким Telegram ID
         telegram_id = int(message.text)
         student = Student.get_or_none(Student.telegram_id == telegram_id)
         if student:
-            await state.update_data(telegram_id=telegram_id)  # Сохраняем Telegram ID студента
+            await state.update_data(telegram_id=telegram_id)
             await message.answer(f"Введите предмет для студента {student.name}:")
             await state.set_state(StudentForm.enter_subject)
         else:
@@ -303,7 +424,7 @@ async def enter_grade_for_subject(message: Message, state: FSMContext):
 
     subject = message.text
     await state.update_data(subject=subject)
-    await message.answer("Введите оценку (например: 4.5):")
+    await message.answer("Введите оценку:")
     await state.set_state(StudentForm.enter_grade)
 
 # Сохранение оценки
@@ -319,15 +440,12 @@ async def save_grade(message: Message, state: FSMContext):
         await message.answer("Введите корректное число.")
         return
 
-    # Получаем данные из состояния
     data = await state.get_data()
-    telegram_id = data['telegram_id']  # Получаем Telegram ID студента
+    telegram_id = data['telegram_id']
     subject = data['subject']
 
-    # Сохраняем оценку в таблице Grade, используя Telegram ID
     Grade.create(student_id=telegram_id, subject=subject, grade=grade_value)
 
-    # Пересчитываем среднюю оценку студента
     student = Student.get(Student.telegram_id == telegram_id)
     grades = Grade.select().where(Grade.student_id == telegram_id)
     average_grade = sum([g.grade for g in grades]) / len(grades)
