@@ -9,7 +9,7 @@ class Student(Model):
     age = IntegerField(null=True)  # Возраст студента (может быть NULL)
     gender = CharField(null=True)  # Пол студента (может быть NULL)
     group = CharField(null=True)  # Группа студента
-    telegram_id = BigIntegerField(unique=True)  # Telegram ID (уникальный и больше, чем обычный Integer)
+    telegram_id = BigIntegerField(unique=True, null=True)  # Telegram ID (может быть NULL)
     average_grade = FloatField(default=0.0)  # Средняя оценка студента
 
     class Meta:
