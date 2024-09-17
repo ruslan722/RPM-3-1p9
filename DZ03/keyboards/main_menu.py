@@ -7,5 +7,6 @@ def main_menu_keyboard():
     builder.button(text="Показать информацию о студентах")
     builder.button(text="Сортировать студентов по средней оценке")
     builder.button(text="Показать лучшего студента")
+    builder.button(text="Посмотреть оценки студента")
     builder.adjust(2)  
     return builder.as_markup(resize_keyboard=True)
