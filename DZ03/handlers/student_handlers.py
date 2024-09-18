@@ -275,6 +275,153 @@ async def choose_student_for_view_grades(message: Message, state: FSMContext):
     await message.answer(f"Выберите студента, отправив его Telegram ID или имя (если ID отсутствует):\n{student_list}")
     await state.set_state(StudentForm.select_student_for_view)
 
+# Просмотр оценок студента (по Telegram ID или имени)
+@router.message(StudentForm.select_student_for_view)
+async def show_student_grades(message: Message, state: FSMContext):
+    input_text = message.text
+    student = None
+
+    try:
+        # Попробуем интерпретировать ввод как Telegram ID
+        telegram_id = int(input_text)
+        student = Student.get_or_none(Student.telegram_id == telegram_id)
+    except ValueError:
+        # Если не удалось преобразовать в ID, ищем студента по имени
+        student = Student.get_or_none(Student.name == input_text)
+
+    if not student:
+        await message.answer("Неверный Telegram ID или имя студента. Попробуйте еще раз.")
+        return
+
+    # Сохраняем ID студента для последующих действий
+    await state.update_data(student_id=student.id)
+
+    # Входим в цикл добавления/изменения оценок
+    await start_grade_edit_cycle(message, state, student)
+
+# Функция для начала цикла изменения/добавления оценок
+async def start_grade_edit_cycle(message: Message, state: FSMContext, student):
+    # Выводим таблицу с оценками студента
+    grades = Grade.select().where(Grade.student_id == student.id)
+    if grades.exists():
+        grade_info = "Оценки студента:\n"
+        grade_info += "{:<10} {:<10}\n".format("Предмет", "Оценка")
+        grade_info += "-" * 20 + "\n"
+        for grade in grades:
+            grade_info += f"{grade.subject:<10} {grade.grade:<10}\n"
+
+        await message.answer(grade_info)
+    else:
+        await message.answer("У студента нет оценок.")
+
+    # Варианты действий (изменить или добавить оценку, вернуться в меню)
+    options_keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Изменить оценку")],
+            [KeyboardButton(text="Добавить новую оценку")],
+            [KeyboardButton(text="Выйти в меню")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.answer("Что вы хотите сделать?", reply_markup=options_keyboard)
+    await state.set_state(StudentForm.grade_action_cycle)  # Устанавливаем состояние цикла
+
+# Действие с оценками в цикле (изменить, добавить или выйти)
+@router.message(StudentForm.grade_action_cycle)
+async def handle_grade_action_cycle(message: Message, state: FSMContext):
+    if message.text == "Выйти в меню":
+        await back_to_menu(message, state)
+        return
+
+    if message.text == "Изменить оценку":
+        await message.answer("Введите название предмета для изменения оценки:")
+        await state.set_state(StudentForm.change_grade_subject_in_cycle)
+    elif message.text == "Добавить новую оценку":
+        await message.answer("Введите название предмета для добавления новой оценки:")
+        await state.set_state(StudentForm.add_new_subject_in_cycle)
+    else:
+        await message.answer("Пожалуйста, выберите корректный вариант.")
+
+# Изменение оценки: запрос предмета в цикле
+@router.message(StudentForm.change_grade_subject_in_cycle)
+async def request_new_grade_in_cycle(message: Message, state: FSMContext):
+    subject = message.text
+    await state.update_data(subject=subject)
+    await message.answer("Введите новую оценку:")
+    await state.set_state(StudentForm.change_grade_value_in_cycle)
+
+# Изменение оценки: запрос новой оценки и сохранение в цикле
+@router.message(StudentForm.change_grade_value_in_cycle)
+async def save_new_grade_in_cycle(message: Message, state: FSMContext):
+    try:
+        new_grade = float(message.text)
+        data = await state.get_data()
+
+        student_id = data.get('student_id')
+        subject = data['subject']
+
+        # Ищем оценку для изменения
+        grade = Grade.get_or_none(Grade.student_id == student_id, Grade.subject == subject)
+        if grade:
+            grade.grade = new_grade
+            grade.save()
+
+            # Пересчитываем среднюю оценку
+            student = Student.get(Student.id == student_id)
+            grades = Grade.select().where(Grade.student_id == student_id)
+            average_grade = sum([g.grade for g in grades]) / len(grades)
+            student.average_grade = average_grade
+            student.save()
+
+            await message.answer(f"Оценка по предмету {subject} изменена на {new_grade}. Средняя оценка обновлена.")
+
+            # Возвращаемся к циклу
+            await start_grade_edit_cycle(message, state, student)
+        else:
+            await message.answer(f"Оценка по предмету {subject} не найдена.")
+            await start_grade_edit_cycle(message, state, student)
+    except ValueError:
+        await message.answer("Введите корректное число.")
+        await start_grade_edit_cycle(message, state, student)
+
+# Добавление новой оценки: запрос предмета в цикле
+@router.message(StudentForm.add_new_subject_in_cycle)
+async def request_new_subject_grade_in_cycle(message: Message, state: FSMContext):
+    subject = message.text
+    await state.update_data(subject=subject)
+    await message.answer("Введите оценку:")
+    await state.set_state(StudentForm.add_new_grade_in_cycle)
+
+# Добавление новой оценки: сохранение в цикле
+@router.message(StudentForm.add_new_grade_in_cycle)
+async def save_new_subject_grade_in_cycle(message: Message, state: FSMContext):
+    try:
+        new_grade = float(message.text)
+        data = await state.get_data()
+
+        student_id = data.get('student_id')
+        subject = data['subject']
+
+        # Добавляем новую оценку
+        Grade.create(student_id=student_id, subject=subject, grade=new_grade)
+
+        # Пересчитываем среднюю оценку
+        student = Student.get(Student.id == student_id)
+        grades = Grade.select().where(Grade.student_id == student_id)
+        average_grade = sum([g.grade for g in grades]) / len(grades)
+        student.average_grade = average_grade
+        student.save()
+
+        await message.answer(f"Оценка по предмету {subject} добавлена: {new_grade}. Средняя оценка обновлена.")
+
+        # Возвращаемся к циклу
+        await start_grade_edit_cycle(message, state, student)
+    except ValueError:
+        await message.answer("Введите корректное число.")
+        await start_grade_edit_cycle(message, state, student)
+
+
 # Вывод таблицы оценок студента (по Telegram ID или имени)
 @router.message(StudentForm.select_student_for_view)
 async def show_student_grades(message: Message, state: FSMContext):
