@@ -1,9 +1,11 @@
 from aiogram import Router
 from aiogram.filters import CommandStart
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from models import Student, Grade
+from peewee import DoesNotExist
 from states import StudentForm
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from keyboards.main_menu import main_menu_keyboard
 
 router = Router()
@@ -301,31 +303,113 @@ async def show_student_grades(message: Message, state: FSMContext):
 
 # Функция для начала цикла изменения/добавления оценок
 async def start_grade_edit_cycle(message: Message, state: FSMContext, student):
-    # Выводим таблицу с оценками студента
+    # Получаем оценки студента
     grades = Grade.select().where(Grade.student_id == student.id)
+    
     if grades.exists():
+        # Инициализация клавиатуры для выбора оценок
+        keyboard = InlineKeyboardBuilder()
+        for grade in grades:
+            button = InlineKeyboardButton(
+                text=f"{grade.subject}: {grade.grade}",
+                callback_data=f"select_grade:{grade.subject}:{grade.grade}"
+            )
+            keyboard.add(button)
+
+        # Формирование текстовой таблицы с оценками студента
         grade_info = "Оценки студента:\n"
         grade_info += "{:<10} {:<10}\n".format("Предмет", "Оценка")
         grade_info += "-" * 20 + "\n"
         for grade in grades:
             grade_info += f"{grade.subject:<10} {grade.grade:<10}\n"
 
+        # Отправляем таблицу с оценками
         await message.answer(grade_info)
+        
+        # Отправляем inline-клавиатуру для выбора оценки
+        await message.answer("Выберите оценку для изменения:", reply_markup=keyboard.as_markup())
+        
+        # Сохраняем ID студента и устанавливаем состояние ожидания выбора оценки
+        await state.update_data(student_id=student.id)
+        await state.set_state(StudentForm.select_grade)
     else:
+        # Сообщение, если у студента нет оценок
         await message.answer("У студента нет оценок.")
 
-    # Варианты действий (изменить или добавить оценку, вернуться в меню)
-    options_keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Изменить оценку")],
-            [KeyboardButton(text="Добавить новую оценку")],
-            [KeyboardButton(text="Выйти в меню")]
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-    await message.answer("Что вы хотите сделать?", reply_markup=options_keyboard)
-    await state.set_state(StudentForm.grade_action_cycle)  # Устанавливаем состояние цикла
+
+@router.callback_query(lambda callback_query: callback_query.data.startswith("select_grade"))
+async def handle_select_grade(callback_query: CallbackQuery, state: FSMContext):
+    # Разбираем данные из callback_data
+    _, subject, grade = callback_query.data.split(":")
+    
+    # Сохраняем выбранный предмет и оценку в состояние
+    await state.update_data(subject=subject, grade=grade)
+    
+    # Запрашиваем новую оценку
+    await callback_query.message.answer(f"Вы выбрали {subject} с оценкой {grade}. Введите новую оценку:")
+    
+    # Переходим в состояние ожидания новой оценки
+    await state.set_state(StudentForm.change_grade_value)
+
+@router.message(StudentForm.change_grade_value)
+async def process_new_grade(message: Message, state: FSMContext):
+    # Получаем данные о предмете и текущей оценке из состояния
+    data = await state.get_data()
+    subject = data.get('subject')
+    student_id = data.get('student_id')  # ID студента, если оно сохранено
+    student_name = data.get('student_name')  # Имя студента, если оно сохранено
+    
+    # Новая оценка, введенная пользователем
+    new_grade = message.text
+
+    # Проверка, что введено корректное значение для оценки
+    try:
+        new_grade = float(new_grade)
+        if not (0 <= new_grade <= 100):  # Проверка, что оценка в диапазоне 0-100
+            raise ValueError("Оценка должна быть числом от 0 до 100.")
+    except ValueError as e:
+        await message.answer(f"Ошибка: {e}. Пожалуйста, введите корректное число для оценки.")
+        return
+    
+    try:
+        # Если есть student_id, ищем по ID
+        if student_id:
+            grade_record = Grade.get(Grade.student == student_id, Grade.subject == subject)
+        # Если student_id нет, ищем по имени студента
+        elif student_name:
+            student = Student.get(Student.name == student_name)
+            grade_record = Grade.get(Grade.student == student.id, Grade.subject == subject)
+        else:
+            raise DoesNotExist
+        
+        # Обновляем оценку и сохраняем изменения
+        grade_record.grade = new_grade
+        grade_record.save()
+
+        # Отправляем подтверждение об успешном обновлении
+        await message.answer(f"Оценка по предмету '{subject}' изменена на {new_grade}.")
+
+        # Переход к следующему шагу с выбором действий
+        options_keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="Изменить другую оценку")],
+                [KeyboardButton(text="Добавить новую оценку")],
+                [KeyboardButton(text="Выйти в меню")]
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+    
+        # Запрашиваем, что делать дальше
+        await message.answer("Что вы хотите сделать дальше?", reply_markup=options_keyboard)
+        
+        # Переходим в состояние выбора дальнейших действий
+        await state.set_state(StudentForm.grade_action_cycle)
+    
+    except DoesNotExist:
+        await message.answer(f"Не удалось найти запись для предмета '{subject}' у студента.")
+        # Возвращаемся к выбору оценки, если произошла ошибка
+        await state.set_state(StudentForm.select_grade)
 
 # Действие с оценками в цикле (изменить, добавить или выйти)
 @router.message(StudentForm.grade_action_cycle)

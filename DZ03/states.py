@@ -16,7 +16,10 @@ class StudentForm(StatesGroup):
     add_new_grade = State()  # Ввод новой оценки
     select_student = State()     
     enter_subject = State()      
-    enter_grade = State()      
+    enter_grade = State()   
+    select_grade = State()         # Состояние выбора оценки
+    change_grade_value = State()   # Состояние изменения значения оценки
+    grade_action_cycle = State()   # Состояние для действий после выбора 
   # Для цикла изменения/добавления оценок
     grade_action_cycle = State()  # Цикл действия с оценками (добавление/изменение)
     change_grade_subject_in_cycle = State()  # Изменение оценки в цикле: выбор предмета
