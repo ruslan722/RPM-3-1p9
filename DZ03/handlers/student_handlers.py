@@ -351,6 +351,56 @@ async def handle_select_grade(callback_query: CallbackQuery, state: FSMContext):
     # Переходим в состояние ожидания новой оценки
     await state.set_state(StudentForm.change_grade_value)
 
+# Показать таблицу оценок студента
+async def show_grades_table(message: Message, state: FSMContext, student):
+    # Получаем все оценки студента
+    grades = Grade.select().where(Grade.student == student.id)
+    if grades.exists():
+        grade_info = "Оценки студента:\n"
+        grade_info += "{:<15} {:<10}\n".format("Предмет", "Оценка")
+        grade_info += "-" * 25 + "\n"
+        for grade in grades:
+            grade_info += f"{grade.subject:<15} {grade.grade:<10}\n"
+
+        await message.answer(grade_info)
+    else:
+        await message.answer("У студента нет оценок.")
+
+    # Запрашиваем действие
+    options_keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Изменить оценку")],
+            [KeyboardButton(text="Добавить новую оценку")],
+            [KeyboardButton(text="Выйти в меню")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.answer("Что вы хотите сделать дальше?", reply_markup=options_keyboard)
+    await state.set_state(StudentForm.grade_action_cycle)
+
+# Обработка выбора оценки для изменения
+@router.message(lambda message: message.text == "Изменить другую оценку")
+async def change_another_grade(message: Message, state: FSMContext):
+    # Получаем данные о студенте из состояния
+    data = await state.get_data()
+    student_id = data.get('student_id')
+    student_name = data.get('student_name')
+
+    # Поиск студента
+    if student_id:
+        student = Student.get_or_none(Student.id == student_id)
+    elif student_name:
+        student = Student.get_or_none(Student.name == student_name)
+    
+    if student:
+        # Показать таблицу оценок студента
+        await show_grades_table(message, state, student)
+    else:
+        await message.answer("Не удалось найти студента. Попробуйте еще раз.")
+        await state.set_state(StudentForm.select_grade)
+
+
 @router.message(StudentForm.change_grade_value)
 async def process_new_grade(message: Message, state: FSMContext):
     # Получаем данные о предмете и текущей оценке из состояния
