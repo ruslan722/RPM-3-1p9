@@ -9,8 +9,8 @@ class Person:
 class Student(Person):
     def __init__(self, name, age):
         super().__init__(name, age)
-        self._grades = {}  # Приватный атрибут для хранения оценок по предметам
-        self._subjects = self._generate_random_subjects()  # Приватный атрибут для хранения списка предметов студента
+        self.__grades = {}  # Приватный атрибут для хранения оценок по предметам
+        self.__subjects = self._generate_random_subjects()  # Приватный атрибут для хранения списка предметов студента
     # Приватный метод для генерации случайного набора предметов для студента
     def _generate_random_subjects(self):
         base_subjects = ["Математика", "Психология", "Геометрия", "История", "Английский"]  # Базовые предметы
