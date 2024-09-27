@@ -2,8 +2,8 @@ import random
 # Базовый класс Person, который содержит общие данные о человеке (имя и возраст)
 class Person:
     def __init__(self, name, age):
-        self.name = name
-        self.age = age
+        self.__name = name
+        self.__age = age
 # Класс Student расширяет класс Person
 # Реализуем конструктор класса Student с приватными атрибутами для предметов и оценок
 class Student(Person):
@@ -29,26 +29,26 @@ class Student(Person):
     # Свойство для доступа к списку предметов студента
     @property
     def subjects(self):
-        return self._subjects
+        return self.__subjects
     # Метод для добавления оценки студенту по конкретному предмету
     # Используем инкапсуляцию: проверяем, что предмет присутствует в списке предметов
     def add_grade(self, subject, grade):
-        if subject in self._subjects:  # Если предмет есть у студента
-            if subject not in self._grades:
+        if subject in self.__subjects:  # Если предмет есть у студента
+            if subject not in self.__grades:
                 self._grades[subject] = []  # Если предмета нет в списке оценок, создаем его
-            self._grades[subject].append(grade)  # Добавляем оценку по предмету
+            self.__grades[subject].append(grade)  # Добавляем оценку по предмету
         else:
-            print(f"{subject} не является предметом у студента {self.name}. Доступные предметы: {', '.join(self._subjects)}")
+            print(f"{subject} не является предметом у студента {self.name}. Доступные предметы: {', '.join(self.__subjects)}")
     # Метод для вычисления средней оценки студента
     # Используем инкапсуляцию для доступа к приватным оценкам
     def get_average_grade(self):
-        total_grades = sum([sum(grades) for grades in self._grades.values()])  # Суммируем все оценки
-        total_subjects = sum([len(grades) for grades in self._grades.values()])  # Считаем количество предметов с оценками
+        total_grades = sum([sum(grades) for grades in self.__grades.values()])  # Суммируем все оценки
+        total_subjects = sum([len(grades) for grades in self.__grades.values()])  # Считаем количество предметов с оценками
         return total_grades / total_subjects if total_subjects > 0 else 0  # Возвращаем среднюю оценку
     # Метод для вывода информации о студенте, включая предметы с оценками
     def __str__(self):
         avg_grade = self.get_average_grade()  # Вычисляем среднюю оценку
-        graded_subjects = [f"{subject}: {self._grades[subject]}" for subject in self._grades]  # Формируем список предметов с оценками
+        graded_subjects = [f"{subject}: {self.__grades[subject]}" for subject in self.__grades]  # Формируем список предметов с оценками
         if graded_subjects:
             graded_subjects_str = ', '.join(graded_subjects)  # Форматируем строку с предметами и оценками
         else:
