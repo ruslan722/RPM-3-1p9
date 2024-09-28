@@ -1,164 +1,172 @@
 import random
+import peewee as pw
 
-class Order:
-    order_counter = 1  # Счетчик для уникальных номеров заказов
-    
-    def __init__(self, dishes=None, status="Создан"):
-        self.order_number = Order.order_counter
-        Order.order_counter += 1
-        self.dishes = dishes if dishes else []
-        self.status = status
+# Настройка базы данных
+db = pw.SqliteDatabase('restaurant.db')
 
-    def add_dish(self, dish):
-        self.dishes.append(dish)
+class BaseModel(pw.Model):
+    class Meta:
+        database = db
 
-    def show_order(self):
-        print(f"Заказ #{self.order_number} (Статус: {self.status}):")
-        for dish in self.dishes:
-            print(f" - {dish}")
-        print()
+class Dish(BaseModel):
+    name = pw.CharField()
+    category = pw.CharField()
 
-    def update_status(self, new_status):
-        self.status = new_status
+class Order(BaseModel):
+    order_number = pw.IntegerField(unique=True)
+    status = pw.CharField(default="Создан")
+    address = pw.CharField(null=True)  # Для адресов доставки
+    delivery_time = pw.CharField(null=True)  # Для времени доставки
 
-class DeliveryOrder(Order):
-    def __init__(self, address, delivery_time, dishes=None, status="Создан"):
-        super().__init__(dishes, status)
-        self.address = address
-        self.delivery_time = delivery_time
+class OrderDish(BaseModel):
+    order = pw.ForeignKeyField(Order, backref='dishes')
+    dish = pw.ForeignKeyField(Dish, backref='orders')
 
-    def update_delivery_status(self):
-        if self.status == "Создан":
-            self.status = "В пути"
-        elif self.status == "В пути":
-            self.status = "Доставлен"
-
-    def show_order(self):
-        super().show_order()
-        print(f"Адрес доставки: {self.address}")
-        print(f"Время доставки: {self.delivery_time}\n")
+# Создание таблиц в базе данных
+db.connect()
+db.create_tables([Dish, Order, OrderDish], safe=True)
 
 def generate_buffet():
-    salads = ["Цезарь с курицей", "Греческий салат", "Салат из свежих овощей", "Оливье", "Винегрет"]
-    appetizers = ["Канапе с семгой и крем-сыром", "Ассорти сыров", "Ветчина с дыней", "Маринованные грибы", "Рулеты из баклажанов с орехами"]
-    main_courses = ["Запеченный лосось", "Курица в соусе терияки", "Говядина в красном вине", "Свиные ребрышки барбекю", "Тушеные овощи с грибами"]
-    sides = ["Картофельное пюре", "Рис с овощами", "Запеченные овощи", "Спагетти с соусом песто", "Кускус с овощами"]
-    desserts = ["Тирамису", "Шоколадный мусс", "Фруктовый салат", "Чизкейк", "Яблочный штрудель"]
-    drinks = ["Апельсиновый сок", "Минеральная вода", "Вино (белое и красное)", "Кофе", "Чай"]
-
     categories = {
-        "Салаты": salads,
-        "Закуски": appetizers,
-        "Основные блюда": main_courses,
-        "Гарниры": sides,
-        "Десерты": desserts,
-        "Напитки": drinks
+        "Салаты": ["Цезарь с курицей", "Греческий салат", "Салат из свежих овощей", "Оливье", "Винегрет"],
+        "Закуски": ["Канапе с семгой и крем-сыром", "Ассорти сыров", "Ветчина с дыней", "Маринованные грибы", "Рулеты из баклажанов с орехами"],
+        "Основные блюда": ["Запеченный лосось", "Курица в соусе терияки", "Говядина в красном вине", "Свиные ребрышки барбекю", "Тушеные овощи с грибами"],
+        "Гарниры": ["Картофельное пюре", "Рис с овощами", "Запеченные овощи", "Спагетти с соусом песто", "Кускус с овощами"],
+        "Десерты": ["Тирамису", "Шоколадный мусс", "Фруктовый салат", "Чизкейк", "Яблочный штрудель"],
+        "Напитки": ["Апельсиновый сок", "Минеральная вода", "Вино (белое и красное)", "Кофе", "Чай"]
     }
     
-    buffet = {category: random.sample(items, 3) for category, items in categories.items()}
-    return buffet, categories
-
-def print_buffet(buffet):
-    print("Текущее меню шведского стола:")
-    for category, items in buffet.items():
-        print(f"{category}:")
+    # Добавление блюд в базу данных
+    for category, items in categories.items():
         for item in items:
-            print(f" - {item}")
-        print()
+            Dish.get_or_create(name=item, category=category)  # Избегает дублирования
 
-def add_custom_dish(buffet, categories):
-    print("Выберите категорию для добавления блюда:")
-    for i, category in enumerate(categories.keys(), 1):
-        print(f"{i}. {category}")
-    category_choice = int(input("Введите номер категории: ")) - 1
-    category_name = list(categories.keys())[category_choice]
+def print_buffet():
+    print("Текущее меню шведского стола:\n" + "="*30)
+    for dish in Dish.select():
+        print(f"{dish.category}: {dish.name} - это блюдо обладает уникальным вкусом и отлично подойдет для вашего праздника или обеда.")
+    print("="*30)
+
+def add_custom_dish():
+    print("Выберите категорию для добавления нового блюда:")
+    categories = list(Dish.select(pw.fn.DISTINCT(Dish.category)))  # Уникальные категории
+    for i, category in enumerate(categories, 1):
+        print(f"{i}. {category.category} - категория с множеством интересных вариантов.")
+    category_choice = int(input("Введите номер категории, куда вы хотите добавить блюдо: ")) - 1
+    category_name = categories[category_choice].category
     new_dish = input(f"Введите название нового блюда для категории '{category_name}': ")
-    categories[category_name].append(new_dish)
-    buffet[category_name] = random.sample(categories[category_name], 3)
-    print("\nОбновленное меню шведского стола:")
-    print_buffet(buffet)
 
-def choose_dish(buffet):
-    print("Выберите блюдо из текущего меню:")
-    for i, (category, items) in enumerate(buffet.items(), 1):
-        print(f"{i}. {category}:")
-        for j, item in enumerate(items, 1):
-            print(f"  {j}. {item}")
-    print()
+    # Добавление нового блюда в базу данных
+    Dish.create(name=new_dish, category=category_name)
+    print(f"Новое блюдо '{new_dish}' было успешно добавлено в категорию '{category_name}'. Теперь ваше меню стало еще разнообразнее и интереснее для ваших гостей и клиентов!")
 
-    category_choice = int(input("Введите номер категории: ")) - 1
-    category_name = list(buffet.keys())[category_choice]
+def choose_dish():
+    print("Выберите блюдо из текущего разнообразного и аппетитного меню, которое состоит из лучших предложений для вашего заказа:")
+    dishes = list(Dish.select())
+    for i, dish in enumerate(dishes, 1):
+        print(f"{i}. {dish.category}: {dish.name} - это превосходное блюдо, которое порадует любого гурмана и станет настоящей изюминкой вашего заказа!")
+
+    choice = input("Введите номер или название блюда, которое вы хотите добавить в заказ: ")
     
-    dish_choice = int(input(f"Введите номер блюда из категории '{category_name}': ")) - 1
-    chosen_dish = buffet[category_name][dish_choice]
-    
-    print(f"Вы выбрали: {chosen_dish}")
-    return chosen_dish
+    # Проверка, является ли ввод числом или строкой
+    if choice.isdigit():
+        choice = int(choice) - 1
+        if 0 <= choice < len(dishes):
+            chosen_dish = dishes[choice]
+            print(f"Вы выбрали великолепное блюдо '{chosen_dish.name}' из категории '{chosen_dish.category}'. Отличный выбор!")
+            return chosen_dish
+        else:
+            print("Неверный номер блюда.")
+            return None
+    else:
+        # Поиск блюда по названию
+        chosen_dish = Dish.get_or_none(Dish.name == choice)
+        if chosen_dish:
+            print(f"Вы выбрали великолепное блюдо '{chosen_dish.name}' из категории '{chosen_dish.category}'. Отличный выбор!")
+            return chosen_dish
+        else:
+            print("Блюдо с таким названием не найдено.")
+            return None
 
-def manage_orders(orders, buffet):
+def manage_orders():
     while True:
         print("\nМеню управления заказами:")
-        print("1. Создать заказ (обычный или доставка)")
-        print("2. Добавить блюдо в заказ")
+        print("1. Создать новый заказ (обычный заказ или заказ с доставкой)")
+        print("2. Добавить блюдо в существующий заказ")
         print("3. Показать информацию о заказе")
         print("4. Изменить статус заказа")
         print("5. Показать все заказы")
-        print("6. Удалить завершенный заказ")
+        print("6. Удалить завершённый заказ")
         print("7. Вернуться в главное меню")
 
         choice = input("Выберите действие: ")
 
         if choice == "1":
             order_type = input("Создать обычный заказ или заказ с доставкой? (обычный/доставка): ").strip().lower()
+            order_number = Order.select().count() + 1
             if order_type == "обычный":
-                order = Order()
+                order = Order.create(order_number=order_number)
             else:
                 address = input("Введите адрес доставки: ")
                 delivery_time = input("Введите время доставки: ")
-                order = DeliveryOrder(address, delivery_time)
-            orders.append(order)
-            print(f"Заказ #{order.order_number} создан.")
+                order = Order.create(order_number=order_number, address=address, delivery_time=delivery_time)
+            print(f"Заказ #{order.order_number} был успешно создан.")
 
         elif choice == "2":
             order_number = int(input("Введите номер заказа для добавления блюда: "))
-            order = next((o for o in orders if o.order_number == order_number), None)
+            order = Order.get_or_none(Order.order_number == order_number)
             if order:
-                dish = choose_dish(buffet)
-                order.add_dish(dish)
-                print(f"Блюдо '{dish}' добавлено в заказ #{order_number}.")
+                dish = choose_dish()
+                if dish:  # Проверка на случай, если dish равно None
+                    OrderDish.create(order=order, dish=dish)
+                    print(f"Блюдо '{dish.name}' добавлено в заказ #{order_number}.")
             else:
-                print(f"Заказ #{order_number} не найден.")
+                print(f"Заказ с номером #{order_number} не найден.")
 
         elif choice == "3":
             order_number = int(input("Введите номер заказа для отображения информации: "))
-            order = next((o for o in orders if o.order_number == order_number), None)
+            order = Order.get_or_none(Order.order_number == order_number)
             if order:
-                order.show_order()
+                print(f"\nЗаказ #{order.order_number} (Статус: {order.status}):")
+                if order.address:
+                    print(f"Адрес доставки: {order.address}")
+                    print(f"Время доставки: {order.delivery_time}")
+                print("Список блюд в заказе:")
+                for order_dish in order.dishes:
+                    print(f" - {order_dish.dish.name} (Категория: {order_dish.dish.category})")
             else:
-                print(f"Заказ #{order_number} не найден.")
+                print(f"Заказ с номером #{order_number} не найден.")
 
         elif choice == "4":
             order_number = int(input("Введите номер заказа для изменения статуса: "))
-            order = next((o for o in orders if o.order_number == order_number), None)
+            order = Order.get_or_none(Order.order_number == order_number)
             if order:
-                if isinstance(order, DeliveryOrder):
-                    order.update_delivery_status()
+                if order.address:
+                    new_status = "В пути" if order.status == "Создан" else "Доставлен"
+                    order.status = new_status
                 else:
-                    new_status = input("Введите новый статус заказа: ")
-                    order.update_status(new_status)
-                print(f"Статус заказа #{order_number} обновлен.")
+                    new_status = input("Введите новый статус для заказа: ")
+                    order.status = new_status
+                order.save()
+                print(f"Статус заказа #{order_number} был успешно обновлён до '{order.status}'.")
             else:
-                print(f"Заказ #{order_number} не найден.")
+                print(f"Заказ с номером #{order_number} не найден.")
 
         elif choice == "5":
             print("\nВсе заказы:")
-            for order in orders:
-                order.show_order()
+            for order in Order.select():
+                print(f"Заказ #{order.order_number} (Статус: {order.status})")
+                for order_dish in order.dishes:
+                    print(f" - {order_dish.dish.name} (Категория: {order_dish.dish.category})")
 
         elif choice == "6":
             order_number = int(input("Введите номер заказа для удаления: "))
-            orders = [o for o in orders if o.order_number != order_number]
-            print(f"Заказ #{order_number} удален.")
+            order = Order.get_or_none(Order.order_number == order_number)
+            if order:
+                order.delete_instance(recursive=True)
+                print(f"Заказ #{order_number} был успешно удалён.")
+            else:
+                print(f"Заказ с номером #{order_number} не найден.")
 
         elif choice == "7":
             break
@@ -167,26 +175,24 @@ def manage_orders(orders, buffet):
             print("Неверный выбор. Пожалуйста, выберите снова.")
 
 def main_menu():
-    buffet, categories = generate_buffet()
-    orders = []  # Список для хранения заказов
-
+    generate_buffet()
     while True:
         print("\nГлавное меню:")
         print("1. Показать текущее меню шведского стола")
-        print("2. Добавить блюдо в меню шведского стола")
+        print("2. Добавить новое блюдо в меню")
         print("3. Управление заказами")
         print("4. Выйти")
 
         choice = input("Выберите действие: ")
 
         if choice == "1":
-            print_buffet(buffet)
+            print_buffet()
 
         elif choice == "2":
-            add_custom_dish(buffet, categories)
+            add_custom_dish()
 
         elif choice == "3":
-            manage_orders(orders, buffet)
+            manage_orders()
 
         elif choice == "4":
             print("Выход из программы.")
