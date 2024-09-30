@@ -20,7 +20,7 @@ class Order(BaseModel):
 
 class OrderDish(BaseModel):
     order = pw.ForeignKeyField(Order, backref='dishes')
-    dish = pw.ForeignKeyField(Dish, backref='orders')
+    dish_name = pw.CharField()  # Теперь сохраняем название блюда
 
 # Создание таблиц в базе данных
 db.connect()
@@ -52,8 +52,14 @@ def add_custom_dish():
     categories = list(Dish.select(pw.fn.DISTINCT(Dish.category)))  # Уникальные категории
     for i, category in enumerate(categories, 1):
         print(f"{i}. {category.category} - категория с множеством интересных вариантов.")
-    category_choice = int(input("Введите номер категории, куда вы хотите добавить блюдо: ")) - 1
-    category_name = categories[category_choice].category
+    print(f"{len(categories) + 1}. Создать новую категорию")  # Добавляем возможность создания новой категории
+
+    category_choice = int(input("Введите номер категории или выберите создание новой категории: ")) - 1
+
+    if category_choice == len(categories):  # Если пользователь выбрал создание новой категории
+        category_name = input("Введите название новой категории: ")
+    else:
+        category_name = categories[category_choice].category
     new_dish = input(f"Введите название нового блюда для категории '{category_name}': ")
 
     # Добавление нового блюда в базу данных
@@ -118,7 +124,7 @@ def manage_orders():
             if order:
                 dish = choose_dish()
                 if dish:  # Проверка на случай, если dish равно None
-                    OrderDish.create(order=order, dish=dish)
+                    OrderDish.create(order=order, dish_name=dish.name)  # Сохраняем название блюда
                     print(f"Блюдо '{dish.name}' добавлено в заказ #{order_number}.")
             else:
                 print(f"Заказ с номером #{order_number} не найден.")
@@ -133,7 +139,7 @@ def manage_orders():
                     print(f"Время доставки: {order.delivery_time}")
                 print("Список блюд в заказе:")
                 for order_dish in order.dishes:
-                    print(f" - {order_dish.dish.name} (Категория: {order_dish.dish.category})")
+                    print(f" - {order_dish.dish_name}")  # Выводим название блюда
             else:
                 print(f"Заказ с номером #{order_number} не найден.")
 
@@ -157,7 +163,7 @@ def manage_orders():
             for order in Order.select():
                 print(f"Заказ #{order.order_number} (Статус: {order.status})")
                 for order_dish in order.dishes:
-                    print(f" - {order_dish.dish.name} (Категория: {order_dish.dish.category})")
+                    print(f" - {order_dish.dish_name}")  # Выводим название блюда
 
         elif choice == "6":
             order_number = int(input("Введите номер заказа для удаления: "))
