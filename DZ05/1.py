@@ -48,8 +48,6 @@ class Book:
             print("Отзывов пока нет. Будьте первым!")  # Если отзывов нет, выводим соответствующее сообщение
 
 
-
-
 class DigitalBook(Book):
     # Конструктор класса DigitalBook. Добавляем новый атрибут - формат файла
     def __init__(self, title, author, year, pages, file_format, available=None):
