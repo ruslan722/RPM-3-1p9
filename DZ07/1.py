@@ -30,6 +30,10 @@ class Order:
         """Вывести общее количество заказов"""
         print(f"Общее количество заказов: {Order.total_order_count}")
 
+    def __str__(self):
+        """Строковое представление объекта заказа"""
+        return f"Заказ {self.order_number}: Блюда - {', '.join(self.dishes)}, Статус - {self.status}"
+
 
 class DeliveryOrder(Order):
     def __init__(self, order_number, delivery_address, delivery_time):
@@ -43,16 +47,16 @@ class DeliveryOrder(Order):
         print(f"Адрес доставки: {self.delivery_address}")
         print(f"Время доставки: {self.delivery_time}")
 
+    def __str__(self):
+        """Строковое представление объекта заказа с доставкой"""
+        return (f"Заказ {self.order_number}: Блюда - {', '.join(self.dishes)}, "
+                f"Статус - {self.status}, Адрес доставки - {self.delivery_address}, "
+                f"Время доставки - {self.delivery_time}")
 
-# Обработчик команд Linux, которые изменяют состояние заказов
+
+# Обработчик команд для Linux
 def linux_commands(orders, command):
-    if command.startswith("ls"):
-        # Показать список заказов как результат команды "ls"
-        print("Список заказов:")
-        for order in orders:
-            print(f"Заказ {order.order_number}, статус: {order.status}")
-
-    elif command.startswith("touch"):
+    if command.startswith("touch"):
         # Создать новый заказ по аналогии с командой "touch"
         parts = command.split()
         if len(parts) == 2:
@@ -63,24 +67,8 @@ def linux_commands(orders, command):
         else:
             print("Ошибка: Использование команды 'touch <номер заказа>'.")
 
-    elif command.startswith("echo"):
-        # Изменить статус заказа как результат команды "echo"
-        parts = command.split()
-        if len(parts) == 3:
-            order_number = parts[1]
-            new_status = parts[2]
-            for order in orders:
-                if order.order_number == order_number:
-                    order.change_status(new_status)
-                    print(f"Статус заказа {order_number} изменен на {new_status} командой echo.")
-                    break
-            else:
-                print(f"Заказ с номером {order_number} не найден.")
-        else:
-            print("Ошибка: Использование команды 'echo <номер заказа> <статус>'.")
-
     elif command.startswith("add"):
-        # Добавить блюдо в заказ как результат команды "add"
+        # Добавить блюдо в заказ
         parts = command.split()
         if len(parts) == 3:
             order_number = parts[1]
@@ -95,8 +83,24 @@ def linux_commands(orders, command):
         else:
             print("Ошибка: Использование команды 'add <номер заказа> <блюдо>'.")
 
+    elif command.startswith("status"):
+        # Изменить статус заказа
+        parts = command.split()
+        if len(parts) == 3:
+            order_number = parts[1]
+            new_status = parts[2]
+            for order in orders:
+                if order.order_number == order_number:
+                    order.change_status(new_status)
+                    print(f"Статус заказа {order_number} изменен на '{new_status}' командой status.")
+                    break
+            else:
+                print(f"Заказ с номером {order_number} не найден.")
+        else:
+            print("Ошибка: Использование команды 'status <номер заказа> <новый статус>'.")
+
     elif command.startswith("info"):
-        # Показать информацию о заказе как результат команды "info"
+        # Показать информацию о заказе
         parts = command.split()
         if len(parts) == 2:
             order_number = parts[1]
@@ -109,20 +113,41 @@ def linux_commands(orders, command):
         else:
             print("Ошибка: Использование команды 'info <номер заказа>'.")
 
-    elif command.startswith("count"):
-        # Показать общее количество заказов как результат команды "count"
+    elif command.startswith("list"):
+        # Показать все заказы
+        print("Список всех заказов:")
+        for order in orders:
+            print(order)
+
+    elif command.startswith("total"):
+        # Показать общее количество заказов
         Order.total_orders()
+
+    elif command.startswith("str"):
+        # Показать строковое представление заказа
+        parts = command.split()
+        if len(parts) == 2:
+            order_number = parts[1]
+            for order in orders:
+                if order.order_number == order_number:
+                    print(order)  # Выводим строковое представление заказа
+                    break
+            else:
+                print(f"Заказ с номером {order_number} не найден.")
+        else:
+            print("Ошибка: Использование команды 'str <номер заказа>'.")
 
 
 # Функция справки по командам Linux
 def show_linux_help():
     print("\n--- Доступные команды Linux ---")
-    print("1. 'ls' - Вывести список всех заказов.")
-    print("2. 'touch <номер заказа>' - Создать новый заказ с указанным номером.")
-    print("3. 'echo <номер заказа> <статус>' - Изменить статус заказа на указанный.")
-    print("4. 'add <номер заказа> <блюдо>' - Добавить блюдо в заказ.")
-    print("5. 'info <номер заказа>' - Показать информацию о заказе.")
-    print("6. 'count' - Показать общее количество заказов.")
+    print("1. 'touch <номер заказа>' - Создать новый заказ с указанным номером.")
+    print("2. 'add <номер заказа> <блюдо>' - Добавить блюдо в заказ.")
+    print("3. 'status <номер заказа> <новый статус>' - Изменить статус заказа.")
+    print("4. 'info <номер заказа>' - Показать информацию о заказе.")
+    print("5. 'list' - Показать все заказы.")
+    print("6. 'total' - Показать общее количество заказов.")
+    print("7. 'str <номер заказа>' - Показать строковое представление заказа.")
 
 
 # Функция меню
@@ -138,10 +163,11 @@ def main_menu():
         print("4. Изменить статус заказа")
         print("5. Показать все заказы")
         print("6. Показать общее количество заказов")
+        print("7. Показать строковое представление заказа")
         if os_type == "posix":  # Проверяем, если это Linux
-            print("7. Выполнить команду Linux")
-            print("8. Показать справку по командам Linux")
-        print("9. Выйти")
+            print("8. Выполнить команду Linux")
+            print("9. Показать справку по командам Linux")
+        print("10. Выйти")
         choice = input("Выберите опцию: ")
 
         if choice == '1':
@@ -189,19 +215,28 @@ def main_menu():
 
         elif choice == '5':
             for order in orders:
-                order.display_info()
+                print(order)
 
         elif choice == '6':
             Order.total_orders()
 
-        elif choice == '7' and os_type == "posix":
-            command = input("Введите команду Linux для выполнения (например, 'ls', 'touch', 'add', 'info', 'count'): ")
-            linux_commands(orders, command)
+        elif choice == '7':
+            order_number = input("Введите номер заказа: ")
+            for order in orders:
+                if order.order_number == order_number:
+                    print(order)  # Выводим строковое представление заказа
+                    break
+            else:
+                print(f"Заказ с номером {order_number} не найден.")
 
         elif choice == '8' and os_type == "posix":
+            command = input("Введите команду Linux для выполнения (например, 'touch', 'add', 'status', 'info', 'list', 'total', 'str'): ")
+            linux_commands(orders, command)
+
+        elif choice == '9' and os_type == "posix":
             show_linux_help()
 
-        elif choice == '9':
+        elif choice == '10':
             print("Выход из программы.")
             break
 
@@ -211,4 +246,3 @@ def main_menu():
 # Запуск программы
 if __name__ == "__main__":
     main_menu()
-    
